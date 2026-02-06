@@ -146,25 +146,24 @@ monitor.alsa.rules = [
 
 A kernel downgrade from 6.18.7 to 6.18.3 was performed as a troubleshooting step (along with sof-firmware and alsa-ucm-conf). **The downgrade did not fix audio by itself** because the root cause was WirePlumber's cached profile, not a kernel regression.
 
-However, kernel 6.18.7 may independently have SoundWire issues (see related bugs below). The SoundWire timeout occurs on both kernels, but it's transient -- the codec does eventually initialize.
+The same SoundWire timeout (`SCP Msg trf timed out`) occurs on both kernel versions. In both cases the codec eventually initializes and ALSA mixer controls become available. The problem was always that WirePlumber cached its `pro-audio` fallback before the codec was ready and never retried.
 
-### Packages after downgrade
+Since we never tested kernel 6.18.7 with a cleared WirePlumber cache, it's unknown whether 6.18.7 has independent SoundWire issues beyond the race condition. The upstream bugs below are real, but may not affect this system. The recommended approach is to upgrade back to current packages and test -- if the WirePlumber cache fix resolves it on the newer kernel too, the downgrade was unnecessary. Use `upgrade-and-fix-audio.sh` to do this safely.
 
-| Package | Before | After |
-|---------|--------|-------|
-| linux | 6.18.7-arch1-1 | 6.18.3-arch1-1 |
-| linux-headers | 6.18.7-arch1-1 | 6.18.3-arch1-1 |
-| sof-firmware | 2025.12.2-1 | 2025.12-1 |
-| alsa-ucm-conf | 1.2.15.3-1 | 1.2.15.1-1 |
+### Packages downgraded (and candidates for re-upgrade)
 
-### The `disable_function_topology` workaround
+| Package | Upgraded to (Feb 6) | Downgraded back to | Current repo |
+|---------|---------------------|-------------------|--------------|
+| linux | 6.18.7-arch1-1 | 6.18.3-arch1-1 | (check `pacman -Si linux`) |
+| linux-headers | 6.18.7-arch1-1 | 6.18.3-arch1-1 | (matches linux) |
+| sof-firmware | 2025.12.2-1 | 2025.12-1 | (check `pacman -Si sof-firmware`) |
+| alsa-ucm-conf | 1.2.15.3-1 | 1.2.15.1-1 | (check `pacman -Si alsa-ucm-conf`) |
 
-The file `/etc/modprobe.d/sof-workaround.conf` was created with:
-```
-options snd_sof disable_function_topology=1
-```
+### Workarounds that turned out to be unnecessary
 
-This was applied as a speculative fix for kernel 6.18.7 based on [thesofproject/linux#5526](https://github.com/thesofproject/linux/issues/5526). It turned out to be unnecessary (the real fix was clearing the WirePlumber cached profile). **This file has been removed.**
+**`disable_function_topology=1`**: The file `/etc/modprobe.d/sof-workaround.conf` was created with `options snd_sof disable_function_topology=1` as a speculative fix for kernel 6.18.7 based on [thesofproject/linux#5526](https://github.com/thesofproject/linux/issues/5526). It turned out to be unnecessary (the real fix was clearing the WirePlumber cached profile). **This file has been removed.**
+
+**Kernel downgrade**: Downgrading from 6.18.7 to 6.18.3 did not fix the audio issue. The same SoundWire timeout and cached profile problem occurred on both versions. The downgrade can be safely reversed with `sudo pacman -Syu` + `sudo limine-mkinitcpio`.
 
 ## Diagnostic commands
 
@@ -207,3 +206,5 @@ journalctl -b --user-unit wireplumber | grep -iE 'ucm|verb|hifi'
 4. **Feb 6**: Attempted fixes: module reload (no help), `disable_function_topology=1` (no help)
 5. **Feb 6**: Kernel downgrade to 6.18.3 -- SoundWire timeout still occurs, audio still broken (cached profile)
 6. **Feb 6**: Cleared `~/.local/state/wireplumber/default-profile`, restarted audio stack -- **fixed**
+7. **Feb 6**: Removed `/etc/modprobe.d/sof-workaround.conf` (unnecessary)
+8. **TODO**: Upgrade packages back to current and verify audio still works (use `upgrade-and-fix-audio.sh`)
