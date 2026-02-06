@@ -236,7 +236,7 @@ Sound was working previously but stopped. pavucontrol shows playback activity bu
 **Race condition + cached fallback**: SoundWire codec init is slow (SCP timeout at boot), WirePlumber tries UCM HiFi before codec is ready, fails, falls back to `pro-audio`, and caches that choice in `~/.local/state/wireplumber/default-profile`. Even after codec finishes initializing, WirePlumber never retries HiFi. Clearing the cache and restarting fixes it. See `AUDIO_FIX.md` for full details.
 
 ### Cleanup TODO
-- [ ] Consider removing `/etc/modprobe.d/sof-workaround.conf` (`disable_function_topology=1`) -- unnecessary on kernel 6.18.3
+- [x] Removed `/etc/modprobe.d/sof-workaround.conf` (`disable_function_topology=1`) -- unnecessary on kernel 6.18.3
 - [ ] Consider upgrading kernel back to 6.18.7 once SoundWire regression is confirmed fixed upstream
 
 ### Relevant Research
