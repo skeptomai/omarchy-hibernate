@@ -35,7 +35,7 @@ lsinitcpio /boot/omarchy.efi | grep nvidia
 
 #### Test 1: Safe Test Mode (doesn't actually hibernate)
 ```bash
-echo test | sudo tee /sys/power/disk
+echo test_resume | sudo tee /sys/power/disk
 sudo systemctl hibernate
 ```
 **Expected**: System should immediately resume (kernel just verifies it can hibernate)
