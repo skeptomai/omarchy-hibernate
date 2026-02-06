@@ -164,10 +164,7 @@ The file `/etc/modprobe.d/sof-workaround.conf` was created with:
 options snd_sof disable_function_topology=1
 ```
 
-This was applied as a speculative fix for kernel 6.18.7 based on [thesofproject/linux#5526](https://github.com/thesofproject/linux/issues/5526). On kernel 6.18.3, this parameter may be unnecessary. It can be removed:
-```bash
-sudo rm /etc/modprobe.d/sof-workaround.conf
-```
+This was applied as a speculative fix for kernel 6.18.7 based on [thesofproject/linux#5526](https://github.com/thesofproject/linux/issues/5526). It turned out to be unnecessary (the real fix was clearing the WirePlumber cached profile). **This file has been removed.**
 
 ## Diagnostic commands
 
