@@ -1,0 +1,39 @@
+# ASUS ROG G14 Zephyrus GU603Z System Information
+# Collected: $(date)
+
+## Hardware
+Laptop: ASUS ROG G14 Zephyrus GU603Z
+RAM: 40 GB ($(grep MemTotal /proc/meminfo))
+GPU: $(lspci | grep VGA)
+GPU Mode: $(supergfxctl -g)
+Kernel: $(uname -r)
+
+## Storage
+$(lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT)
+
+## Current Boot Config
+Root Device: /dev/mapper/root
+LUKS PARTUUID: 625283df-e297-4a3c-bef9-15c498f54b02
+Kernel cmdline: $(cat /proc/cmdline)
+
+## NVIDIA Status
+NVIDIA Services:
+$(systemctl list-unit-files | grep nvidia)
+
+NVIDIA Modules Loaded:
+$(lsmod | grep nvidia)
+
+NVIDIA modprobe config:
+$(cat /etc/modprobe.d/nvidia.conf)
+
+## Current Swap
+$(swapon --show)
+
+## Hibernate Support
+Supported states: $(cat /sys/power/state)
+Disk modes: $(cat /sys/power/disk)
+
+## mkinitcpio Config
+Base HOOKS: $(grep "^HOOKS=" /etc/mkinitcpio.conf)
+Omarchy HOOKS: $(cat /etc/mkinitcpio.conf.d/omarchy_hooks.conf)
+NVIDIA MODULES: $(cat /etc/mkinitcpio.conf.d/nvidia.conf)
