@@ -225,4 +225,4 @@ journalctl -b --user-unit wireplumber | grep -iE 'ucm|verb|hifi'
 6. **Feb 6**: Cleared `~/.local/state/wireplumber/default-profile`, restarted audio stack -- **fixed**
 7. **Feb 6**: Removed `/etc/modprobe.d/sof-workaround.conf` (unnecessary)
 8. **Feb 6**: Created systemd service (`fix-soundwire-profile.service`) to automate the fix on boot + resume
-9. **TODO**: Upgrade packages back to current and verify audio still works (use `upgrade-and-fix-audio.sh`)
+9. **Feb 6**: Upgraded packages back to current (kernel 6.18.7, sof-firmware 2025.12.2, alsa-ucm-conf 1.2.15.3) — audio works

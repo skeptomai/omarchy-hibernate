@@ -237,7 +237,7 @@ Sound was working previously but stopped. pavucontrol shows playback activity bu
 
 ### Cleanup TODO
 - [x] Removed `/etc/modprobe.d/sof-workaround.conf` (`disable_function_topology=1`) -- unnecessary on kernel 6.18.3
-- [ ] Consider upgrading kernel back to 6.18.7 once SoundWire regression is confirmed fixed upstream
+- [x] Upgraded packages back to current (kernel 6.18.7, sof-firmware 2025.12.2, alsa-ucm-conf 1.2.15.3) -- audio works
 
 ### Relevant Research
 - [thesofproject/linux#5526](https://github.com/thesofproject/linux/issues/5526) -- kernel 6.16+ function topology change breaks SoundWire devices
