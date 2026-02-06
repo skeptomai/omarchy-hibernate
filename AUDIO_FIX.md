@@ -121,25 +121,42 @@ Test audio:
 speaker-test -c 2 -t wav
 ```
 
-### Persistent fix (survive future reboots)
+### Persistent fix: systemd service (automated)
 
-The race condition can recur on any boot where the SoundWire codec is slow to initialize. If it happens again, just re-run the quick fix above.
+A systemd service automatically detects and fixes the race condition on every boot and after hibernate/suspend resume. Install with:
 
-To make WirePlumber more resilient, you could add a WirePlumber rule to prefer HiFi over pro-audio for this card. Create `~/.config/wireplumber/wireplumber.conf.d/prefer-hifi.conf`:
-
+```bash
+cd /home/cb/Projects/omarchy-hibernate
+sudo ./install-audio-fix.sh
 ```
-monitor.alsa.rules = [
-  {
-    matches = [
-      { device.name = "alsa_card.pci-0000_00_1f.3-platform-sof_sdw" }
-    ]
-    actions = {
-      update-props = {
-        api.acp.auto-profile = true
-      }
-    }
-  }
-]
+
+This installs three components:
+
+| File | Purpose |
+|------|---------|
+| `/usr/local/bin/fix-soundwire-profile` | Main script: polls ALSA until codecs ready, checks WirePlumber state, clears cache + restarts if needed |
+| `/etc/systemd/system/fix-soundwire-profile.service` | Oneshot service, runs after `graphical.target` on every boot |
+| `/usr/lib/systemd/system-sleep/fix-soundwire-profile` | Sleep hook, re-triggers the service after suspend/hibernate resume |
+
+**How it works:**
+
+1. Finds the `sof-soundwire` ALSA card number dynamically from `/proc/asound/cards`
+2. Polls `amixer -c <N> scontrols` every 2s (up to 90s) waiting for `Speaker` and `Headphone` controls to appear (meaning SoundWire codecs have finished initializing)
+3. Checks `wpctl status` — if Speaker sink is already visible, exits (no-op)
+4. If Speaker is missing despite ALSA controls being ready: clears `~/.local/state/wireplumber/default-profile` and restarts `wireplumber pipewire pipewire-pulse`
+5. Verifies Speaker sink appears after restart
+
+**Logs:** `journalctl -u fix-soundwire-profile`
+
+**Manual test:** `sudo systemctl start fix-soundwire-profile.service`
+
+**Rollback:**
+```bash
+sudo systemctl disable fix-soundwire-profile.service
+sudo rm /usr/local/bin/fix-soundwire-profile
+sudo rm /etc/systemd/system/fix-soundwire-profile.service
+sudo rm /usr/lib/systemd/system-sleep/fix-soundwire-profile
+sudo systemctl daemon-reload
 ```
 
 ## What the kernel downgrade did (and didn't do)
@@ -207,4 +224,5 @@ journalctl -b --user-unit wireplumber | grep -iE 'ucm|verb|hifi'
 5. **Feb 6**: Kernel downgrade to 6.18.3 -- SoundWire timeout still occurs, audio still broken (cached profile)
 6. **Feb 6**: Cleared `~/.local/state/wireplumber/default-profile`, restarted audio stack -- **fixed**
 7. **Feb 6**: Removed `/etc/modprobe.d/sof-workaround.conf` (unnecessary)
-8. **TODO**: Upgrade packages back to current and verify audio still works (use `upgrade-and-fix-audio.sh`)
+8. **Feb 6**: Created systemd service (`fix-soundwire-profile.service`) to automate the fix on boot + resume
+9. **TODO**: Upgrade packages back to current and verify audio still works (use `upgrade-and-fix-audio.sh`)

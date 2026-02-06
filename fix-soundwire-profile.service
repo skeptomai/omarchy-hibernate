@@ -1,0 +1,11 @@
+[Unit]
+Description=Fix SoundWire audio profile if WirePlumber fell back to pro-audio
+After=graphical.target sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fix-soundwire-profile boot
+TimeoutStartSec=120
+
+[Install]
+WantedBy=graphical.target

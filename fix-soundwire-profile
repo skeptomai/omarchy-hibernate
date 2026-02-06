@@ -1,0 +1,137 @@
+#!/bin/bash
+#
+# fix-soundwire-profile — Detect and fix WirePlumber pro-audio fallback
+#
+# On HP OMEN Transcend 14 (Arrow Lake / SoundWire), WirePlumber sometimes
+# starts before SoundWire codecs finish initializing, falls back to the
+# pro-audio profile, and caches that broken choice. This script waits for
+# the codecs to be ready, then fixes the profile if needed.
+#
+# Usage: fix-soundwire-profile [boot|resume]
+
+set -euo pipefail
+
+TRIGGER="${1:-unknown}"
+TAG="fix-soundwire-profile"
+POLL_INTERVAL=2
+POLL_TIMEOUT=90
+
+log() { logger -t "$TAG" "$*"; echo "$TAG: $*"; }
+
+# --- Find sof-soundwire ALSA card number ---
+find_card() {
+    grep -oP '^\s*\K\d+(?=\s+\[sofsoundwire\s*\])' /proc/asound/cards 2>/dev/null || true
+}
+
+# --- Find logged-in graphical user ---
+find_user() {
+    # Look for a session with a seat (graphical login)
+    # loginctl columns: SESSION UID USER SEAT LEADER CLASS TTY IDLE SINCE
+    local user
+    user=$(loginctl list-sessions --no-legend 2>/dev/null | while read -r session_id uid user seat _rest; do
+        if [[ -n "$seat" && "$seat" != "-" ]]; then
+            echo "$user"
+            break
+        fi
+    done)
+
+    if [[ -n "$user" ]]; then
+        echo "$user"
+        return
+    fi
+
+    # Fallback: UID 1000
+    if id -nu 1000 &>/dev/null; then
+        id -nu 1000
+    fi
+}
+
+# --- Run a command as the target user with their D-Bus/PipeWire env ---
+run_as_user() {
+    local user="$1"; shift
+    local uid
+    uid=$(id -u "$user")
+    runuser -u "$user" -- env \
+        XDG_RUNTIME_DIR="/run/user/$uid" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+        "$@"
+}
+
+# --- Main ---
+
+log "[$TRIGGER] Starting SoundWire profile check"
+
+# Find the ALSA card
+card=$(find_card)
+if [[ -z "$card" ]]; then
+    log "[$TRIGGER] sof-soundwire card not found in /proc/asound/cards, exiting"
+    exit 0
+fi
+log "[$TRIGGER] Found sof-soundwire as card $card"
+
+# Poll until Speaker and Headphone controls appear (codecs ready)
+elapsed=0
+codecs_ready=false
+while (( elapsed < POLL_TIMEOUT )); do
+    controls=$(amixer -c "$card" scontrols 2>/dev/null || true)
+    if echo "$controls" | grep -q "Speaker" && echo "$controls" | grep -q "Headphone"; then
+        codecs_ready=true
+        break
+    fi
+    sleep "$POLL_INTERVAL"
+    (( elapsed += POLL_INTERVAL ))
+done
+
+if ! $codecs_ready; then
+    log "[$TRIGGER] ERROR: SoundWire codecs not ready after ${POLL_TIMEOUT}s — Speaker/Headphone controls never appeared"
+    exit 1
+fi
+log "[$TRIGGER] SoundWire codecs ready after ~${elapsed}s"
+
+# Find the user
+user=$(find_user)
+if [[ -z "$user" ]]; then
+    log "[$TRIGGER] No graphical user session found, exiting"
+    exit 0
+fi
+log "[$TRIGGER] Target user: $user"
+
+# Check if WirePlumber already has the correct profile
+wpctl_output=$(run_as_user "$user" wpctl status 2>/dev/null || true)
+
+if echo "$wpctl_output" | grep -q "Speaker"; then
+    log "[$TRIGGER] WirePlumber already shows Speaker sink — profile is correct, nothing to do"
+    exit 0
+fi
+
+# No Speaker sink found — assume profile needs fixing.
+# (In the broken state, wpctl shows generic "sof-soundwire Pro" ports instead of Speaker/Headphone.)
+log "[$TRIGGER] WirePlumber not showing Speaker sink — fixing profile"
+
+# Clear the cached default-profile
+user_home=$(getent passwd "$user" | cut -d: -f6)
+profile_cache="$user_home/.local/state/wireplumber/default-profile"
+
+if [[ -f "$profile_cache" ]]; then
+    log "[$TRIGGER] Clearing cached profile: $profile_cache"
+    echo "[default-profile]" > "$profile_cache"
+    chown "$user:$user" "$profile_cache"
+else
+    log "[$TRIGGER] No cached profile file found at $profile_cache"
+fi
+
+# Restart the audio stack
+log "[$TRIGGER] Restarting wireplumber pipewire pipewire-pulse"
+run_as_user "$user" systemctl --user restart wireplumber pipewire pipewire-pulse
+
+# Verify
+sleep 3
+wpctl_output=$(run_as_user "$user" wpctl status 2>/dev/null || true)
+
+if echo "$wpctl_output" | grep -q "Speaker"; then
+    log "[$TRIGGER] SUCCESS: Speaker sink now visible — audio profile fixed"
+    exit 0
+else
+    log "[$TRIGGER] WARNING: Speaker sink still not visible after restart — may need manual intervention"
+    exit 1
+fi

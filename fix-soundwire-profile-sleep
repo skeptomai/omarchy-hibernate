@@ -1,0 +1,12 @@
+#!/bin/bash
+# /usr/lib/systemd/system-sleep/fix-soundwire-profile
+#
+# After resume from suspend/hibernate, re-check the SoundWire audio profile.
+# SoundWire hardware powers down during sleep and must reinitialize on resume,
+# which can trigger the same WirePlumber pro-audio fallback race condition.
+
+case "$1" in
+    post)
+        systemctl start --no-block fix-soundwire-profile.service
+        ;;
+esac
