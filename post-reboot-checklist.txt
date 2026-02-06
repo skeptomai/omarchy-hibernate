@@ -1,0 +1,4 @@
+After reboot, check:
+  uname -r                  # should be 6.18.3-arch1-1
+  wpctl status              # should show Speaker/Headphone, not Pro
+  speaker-test -c 2 -t wav  # should produce sound

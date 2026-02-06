@@ -181,3 +181,73 @@ If anything goes wrong:
 3. Run `sudo limine-mkinitcpio`
 4. Reboot
 5. To fully undo: run `omarchy-hibernation-remove`
+
+---
+
+## Audio Issue: No Sound from Speakers
+
+### Problem
+Sound was working previously but stopped. pavucontrol shows playback activity but no actual audio. Output devices show as generic "sof-soundwire Pro" ports instead of real hardware names (Speaker, Headphone).
+
+### Hardware
+- **Audio controller**: Intel Arrow Lake cAVS (`00:1f.3`)
+- **Codecs**: RT711-SDCA (headphone, SoundWire link 0) + RT1316 (speaker amp, SoundWire link 3)
+- **SOF driver**: `sof-audio-pci-intel-mtl`
+- **Topology**: `sof-arl-rt711-l0-rt1316-l3-2ch.tplg` (loads successfully)
+- **SOF firmware**: 2.14.1.1 (boots successfully)
+- **ALSA card 1**: `sof-soundwire` -- PCM devices: Jack Out, Speaker, DMIC Raw, Amp feedback, Deepbuffer Jack Out
+
+### Root Cause Analysis
+1. **SoundWire communication failure** in dmesg:
+   ```
+   soundwire_intel soundwire_intel.link.0: SCP Msg trf timed out
+   soundwire sdw-master-0-0: trf on Slave 6 failed:-5 write addr 8789 count 0
+   ```
+   The codec hardware isn't responding to the SoundWire controller.
+
+2. **UCM HiFi verb fails** (WirePlumber log):
+   ```
+   spa.alsa: Failed to get the verb HiFi
+   spa.alsa: No UCM verb is valid for <<<SplitPCM=1>>>hw:1
+   ```
+   Because the codec didn't initialize, the mixer controls UCM needs don't exist. Falls back to "Pro" profile with generic port names and no proper speaker routing.
+
+### Package Timeline (from pacman.log)
+- **Feb 5**: Omarchy installed -- kernel 6.18.3, alsa-ucm-conf 1.2.15.1, pipewire 1.4.9, sof-firmware 2025.12
+- **Feb 6 ~6am**: Upgraded -- kernel **6.18.7**, alsa-ucm-conf **1.2.15.3**, pipewire **1.4.10**, sof-firmware **2025.12.2**
+- Sound worked before but timing of breakage vs upgrade is uncertain
+
+### Installed Audio Packages
+- `sof-firmware` 2025.12.2-1
+- `alsa-ucm-conf` 1.2.15.3-1
+- `alsa-lib` 1.2.15.3-2
+- `alsa-utils` (installed during debugging)
+- `pipewire` 1.4.10-2
+- `wireplumber` 0.5.13-1
+
+### Fixes Applied So Far
+1. [x] Installed `alsa-utils` for diagnostic tools
+2. [x] Tried module reload (`modprobe -r/modprobe snd_sof_pci_intel_mtl`) -- did not help
+3. [x] Added `disable_function_topology=1` workaround -- did not help (not the root cause)
+4. [x] Downgraded kernel 6.18.7 -> 6.18.3 (+ sof-firmware 2025.12, alsa-ucm-conf 1.2.15.1) -- SoundWire timeout persisted, audio still broken
+5. [x] **FIXED**: Cleared WirePlumber cached profile (`~/.local/state/wireplumber/default-profile` had `pro-audio` cached), restarted audio stack -- Speaker/Headphone/Mic all working
+
+### Root Cause (Resolved)
+**Race condition + cached fallback**: SoundWire codec init is slow (SCP timeout at boot), WirePlumber tries UCM HiFi before codec is ready, fails, falls back to `pro-audio`, and caches that choice in `~/.local/state/wireplumber/default-profile`. Even after codec finishes initializing, WirePlumber never retries HiFi. Clearing the cache and restarting fixes it. See `AUDIO_FIX.md` for full details.
+
+### Cleanup TODO
+- [ ] Consider removing `/etc/modprobe.d/sof-workaround.conf` (`disable_function_topology=1`) -- unnecessary on kernel 6.18.3
+- [ ] Consider upgrading kernel back to 6.18.7 once SoundWire regression is confirmed fixed upstream
+
+### Relevant Research
+- [thesofproject/linux#5526](https://github.com/thesofproject/linux/issues/5526) -- kernel 6.16+ function topology change breaks SoundWire devices
+- [thesofproject/sof#10201](https://github.com/thesofproject/sof/issues/10201) -- HP OMEN Transcend 14 ARL topology issues
+- [Arch forums #310227](https://bbs.archlinux.org/viewtopic.php?id=310227) -- kernel 6.17.8+ GPIO regression breaks SoundWire codec init
+- UCM profiles exist at `/usr/share/alsa/ucm2/sof-soundwire/` with rt711-sdca.conf and rt1316.conf
+
+### Rollback (if needed)
+```bash
+sudo rm /etc/modprobe.d/sof-workaround.conf
+# If kernel was downgraded:
+sudo pacman -S linux linux-headers
+```
